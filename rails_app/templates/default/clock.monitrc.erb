@@ -1,0 +1,5 @@
+check process clock
+  with pidfile /var/run/clock.pid
+  start program = "/sbin/start clock"
+  stop program = "/sbin/stop clock"
+  if not exist then alert

@@ -1,0 +1,15 @@
+check process unicorn
+  with pidfile /var/run/unicorn.pid
+  start program = "/etc/init.d/unicorn start"
+  stop program = "/etc/init.d/unicorn stop"
+
+<% (0...node.rails_app.unicorn_workers).each do |worker_num| %>
+check process unicorn_worker_<%= worker_num %>
+  with pidfile /var/run/unicorn.<%= worker_num -%>.pid
+  start program = "/bin/cat /dev/null"
+  stop program = "/etc/init.d/unicorn kill_worker <%= worker_num %>"
+  if mem usage > 250.0 MB for 1 cycles then restart
+  if cpu usage > 22% for 2 cycles then alert
+  if cpu usage > 25% for 1 cycles then restart
+
+<% end %>

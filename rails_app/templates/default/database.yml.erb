@@ -1,0 +1,11 @@
+<%= node.rails_app.rails_env %>:
+  adapter: <%= node.rails_app.database['adapter'] %>
+  host: <%= node.rails_app.database['host'] %>
+  port: <%= node.rails_app.database['port'] %>
+  database: <%= node.rails_app.database['database'] %>
+  username: <%= node.rails_app.database['username'] %>
+  password: <%= node.rails_app.database['password'] %>
+  schema_search_path: public
+  template: template0
+  encoding: <%= node.rails_app.database.has_key?('encoding') ? node.rails_app.database['encoding'] : 'utf8' %>
+  pool: <%= node.rails_app.database['pool'] %>

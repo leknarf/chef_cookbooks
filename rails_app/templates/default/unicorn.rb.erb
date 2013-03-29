@@ -1,0 +1,67 @@
+##
+# Unicorn config at <%= @name %>
+# Managed by Chef - Local Changes will be Nuked from Orbit (just to be sure)
+##
+
+# Where to drop a pidfile
+pid_path = '/var/run/unicorn.pid'
+pid pid_path
+
+# What ports/sockets to listen on
+listen 8080
+
+cwd = '<%= @working_directory -%>'
+working_directory cwd
+
+# Log paths
+stdout_path '/var/log/unicorn/unicorn.log'
+stderr_path '/var/log/unicorn/unicorn.log'
+
+# What the timeout for killing busy workers is, in seconds
+timeout 60
+
+# Whether the app should be pre-loaded
+preload_app true
+
+# How many worker processes
+worker_processes <%= node.rails_app.unicorn_workers -%>
+
+before_fork do |server, worker|
+
+  defined?(ActiveRecord::Base) and
+    ActiveRecord::Base.connection.disconnect!
+
+  old_pid = "#{server.config[:pid]}.oldbin"
+  if old_pid != server.pid
+    begin
+      sig = (worker.nr + 1) >= server.worker_processes ? :QUIT : :TTOU
+      Process.kill(sig, File.read(old_pid).to_i)
+    rescue Errno::ENOENT, Errno::ESRCH
+      # someone else did our job for us
+    end
+  end
+
+  sleep 1
+end
+
+after_fork do |server, worker|
+  rails_env = '<%= node.rails_app.rails_env -%>'
+  worker.user('app', 'app') if Process.euid == 0 && rails_env == 'production'
+
+  defined?(ActiveRecord::Base) and
+    ActiveRecord::Base.establish_connection
+
+  defined?(Rails) and Rails.cache.respond_to?(:reconnect) and
+    Rails.cache.reconnect
+
+  Sidekiq.configure_client do |config|
+    config.redis = { :size => 1 }
+  end
+
+  child_pid = server.config[:pid].sub('.pid', ".#{worker.nr}.pid")
+  system("echo #{Process.pid} > #{child_pid}")
+end
+
+before_exec do |server|
+  ENV['BUNDLE_GEMFILE'] = "#{cwd}/Gemfile"
+end

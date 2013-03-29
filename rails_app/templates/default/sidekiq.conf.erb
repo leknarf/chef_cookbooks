@@ -1,0 +1,13 @@
+# Upstart sidekiq script
+# Managed by chef
+
+start on runlevel[345]
+stop on runlevel[!345]
+
+chdir <%= node.rails_app.deploy_dir -%>/current/
+setuid <%= node.rails_app.user %>
+setgid <%= node.rails_app.group %>
+
+post-stop exec rm /var/run/sidekiq.pid
+
+exec bundle exec sidekiq -e <%= node.rails_app.rails_env -%> -c <%= node.rails_app.sidekiq_workers -%> <%= node.rails_app.sidekiq_worker_priority.map {|k,v| " -q #{k}, #{v}"}.inject('') {|memo, val| memo += val; memo} -%> -P /var/run/sidekiq.pid >> log/sidekiq.log 2>&1

@@ -1,0 +1,7 @@
+check process sidekiq
+  with pidfile /var/run/sidekiq.pid
+  start program = "/sbin/start sidekiq"
+  stop program = "/sbin/stop sidekiq"
+  if not exist then alert
+  if 1 restart within 5 cycles then timeout
+  if totalmem is greater than 1000 MB for 2 cycles then restart

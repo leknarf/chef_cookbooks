@@ -1,0 +1,23 @@
+# Upstart clock script
+# Managed by chef
+
+start on runlevel[345]
+stop on runlevel[!345]
+
+chdir <%= node.rails_app.deploy_dir -%>/current/
+setuid <%= node.rails_app.user %>
+setgid <%= node.rails_app.group %>
+
+env RAILS_ENV=<%= node.rails_app.rails_env %>
+export RAILS_ENV
+
+exec bundle exec clockwork lib/clock.rb
+
+post-start script
+  PID=`status clock | egrep -oi '([0-9]+)$' | head -n1`
+  echo $PID > /var/run/clock.pid
+end script
+
+post-stop script
+  rm -f /var/run/clock.pid
+end script

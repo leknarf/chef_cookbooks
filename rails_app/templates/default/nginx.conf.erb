@@ -1,0 +1,61 @@
+worker_processes <%= node.rails_app.nginx_workers -%>;
+pid /var/run/nginx.pid;
+
+user <%= node.rails_app.user -%> <%= node.rails_app.group -%>;
+
+events {
+  worker_connections 768;
+}
+
+http {
+  sendfile on;
+  tcp_nopush on;
+  tcp_nodelay on;
+  keepalive_timeout 65;
+  types_hash_max_size 2048;
+
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+
+  access_log /var/log/nginx/nginx.access.log;
+  error_log  /var/log/nginx/nginx.error.log;
+
+  gzip on;
+  gzip_disable "msie6";
+
+  upstream unicorn_server {
+    server localhost:8080;
+  }
+
+  server {
+    listen 80 default_server;
+    server_name <%= node.fqdn.domain -%>;
+
+    keepalive_timeout 5;
+    client_max_body_size 4G;
+
+    root <%= node.rails_app.deploy_dir -%>/current/public;
+
+    location / {
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header Host $http_host;
+      proxy_redirect off;
+
+      if (!-f $request_filename) {
+        proxy_pass http://unicorn_server;
+        break;
+      }
+    }
+
+    error_page 500 502 503 504 /500.html;
+    location = /500.html {
+    root <%= node.rails_app.deploy_dir -%>/current/public;
+    }
+  }
+
+  # Redirect www to naked domain
+  server {
+    server_name ~^www\.(?P<domain>.+)$;
+    rewrite ^ http://$domain$request_uri permanent;
+  }
+}
