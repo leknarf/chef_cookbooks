@@ -1,0 +1,48 @@
+Config.update(:tmp_path => '<%= node[:postgresql][:dir] %>/backup')
+
+Backup::Database::PostgreSQL.defaults do |db|
+  db.username = '<%= @config[:database][:username] %>'
+  db.password = '<%= @config[:database][:password] %>'
+  db.host = "localhost"
+  db.port = 5432
+end
+
+Backup::Storage::S3.defaults do |s3|
+  s3.access_key_id = '<%= @config[:s3][:aws_access_key] %>'
+  s3.secret_access_key  = '<%= @config[:s3][:aws_secret_key] %>'
+  s3.region = '<%= @config[:s3][:bucket_region] %>'
+  s3.bucket = '<%= @config[:s3][:bucket_name] %>'
+end
+
+Backup::Notifier::Mail.defaults do |mail|
+  mail.on_success = <%= @config[:mail][:on_success] %>
+  mail.on_failure = <%= @config[:mail][:on_failure] %>
+  mail.from = '<%= @config[:mail][:from_address] %>'
+  mail.to = '<%= @config[:mail][:to_address] %>'
+  mail.domain = '<%= @config[:mail][:domain] %>'
+  mail.address = '<%= @config[:mail][:smtp_server] %>'
+  mail.port = <%= @config[:mail][:smtp_port] %>
+  mail.user_name = '<%= @config[:mail][:username] %>'
+  mail.password = '<%= @config[:mail][:password] %>'
+  mail.authentication = 'plain'
+  mail.enable_starttls_auto = true
+end
+
+<% {'hourly' => '48', 'daily' => 14, 'weekly' => 8, 'monthly' => 24}.each do | period, keep | %>
+  Backup::Model.new(:<%= "#{@config[:name]}_#{period}" %>, '<%= "#{@config[:description]} #{period}" %>') do
+
+    split_into_chunks_of 250
+    compress_with Gzip
+    notify_by Mail
+
+    store_with S3, '<%= "#{@config[:name]}_#{period}" %>' do |s3|
+      s3.keep = <%= keep %>
+    end
+
+    <% @config[:database][:databases].each do |database| %>
+    database PostgreSQL do |db|
+      db.name = '<%= database %>'
+    end
+    <% end %>
+  end
+<% end %>
