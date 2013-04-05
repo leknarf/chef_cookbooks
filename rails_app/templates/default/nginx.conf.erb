@@ -29,7 +29,7 @@ http {
 
   server {
     listen 80 default_server;
-    server_name <%= node.fqdn.domain -%>;
+    server_name <%= node.rails_app.server_name -%>;
 
     keepalive_timeout 5;
     client_max_body_size 4G;

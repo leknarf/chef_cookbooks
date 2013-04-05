@@ -1,9 +1,9 @@
 include_recipe 'ruby_build'
 include_recipe 'redis::server_package'
 include_recipe 'monit'
-include_recipe 'fqdn'
 
-node.normal['rails_app']['database'] = {
+
+node.default['rails_app']['database'] = {
       'adapter' => 'postgresql',
       'database' => 'example_database',
       'host' => 'example_host',
@@ -13,25 +13,28 @@ node.normal['rails_app']['database'] = {
       'pool' => '50',
     }
 
-node.normal['rails_app']['user'] = 'example'
-node.normal['rails_app']['group'] = 'example'
-node.normal['rails_app']['deploy_dir'] = '/opt/example'
-node.normal['rails_app']['unicorn_config'] = '/etc/unicorn/example.rb'
-node.normal['rails_app']['keep_releases'] = 3
-node.normal['rails_app']['bundler_without_groups'] = %w(development test cucumber staging darwin)
-node.normal['rails_app']['git_repo'] = 'git@github.com:example_repo.git'
-node.normal['rails_app']['git_branch'] = 'master'
-node.normal['rails_app']['rails_env'] = 'production'
-node.normal['rails_app']['unicorn_workers'] = 3
-node.normal['rails_app']['nginx_workers'] = 3
-node.normal['rails_app']['sidekiq_workers'] = 25
-node.normal['rails_app']['sidekiq_worker_priority'] = { :default => 1 }
-node.normal['rails_app']['ruby_version'] = '2.0.0-p0'
+node.default['rails_app']['user'] = 'example'
+node.default['rails_app']['group'] = 'example'
+node.default['rails_app']['uid'] = 2000
+node.default['rails_app']['gid'] = 2000
+node.default['rails_app']['deploy_dir'] = '/opt/example'
+node.default['rails_app']['unicorn_config'] = '/etc/unicorn/example.rb'
+node.default['rails_app']['keep_releases'] = 3
+node.default['rails_app']['bundler_without_groups'] = %w(development test cucumber staging darwin)
+node.default['rails_app']['git_repo'] = 'git@github.com:example_repo.git'
+node.default['rails_app']['git_branch'] = 'master'
+node.default['rails_app']['rails_env'] = 'production'
+node.default['rails_app']['unicorn_workers'] = 3
+node.default['rails_app']['nginx_workers'] = 3
+node.default['rails_app']['server_name'] = 'example.com'
+node.default['rails_app']['sidekiq_workers'] = 25
+node.default['rails_app']['sidekiq_worker_priority'] = { :default => 1 }
+node.default['rails_app']['ruby_version'] = '2.0.0-p0'
 
 
-node.normal['rails_app']['packages'] = %w(openssl libpq-dev libreadline6 libreadline6-dev libxml2-dev libxslt-dev libyaml-dev zlib1g zlib1g-dev imagemagick libmagickcore-dev)
+node.default['rails_app']['packages'] = %w(openssl libpq-dev libreadline6 libreadline6-dev libxml2-dev libxslt-dev libyaml-dev zlib1g zlib1g-dev imagemagick libmagickcore-dev)
 
-node.normal['github']['id_rsa'] = <<-EOS
+node.default['github']['id_rsa'] = <<-EOS
 -----BEGIN RSA PRIVATE KEY-----
 Create a deploy user account in github,
 give it read access to your repo,
@@ -39,7 +42,7 @@ and put its private key here.
 -----END RSA PRIVATE KEY-----
 EOS
 
-node.normal['rails_app']['packages'] = %w(openssl libpq-dev libreadline6 libreadline6-dev libxml2-dev libxslt-dev libyaml-dev zlib1g zlib1g-dev imagemagick libmagickcore-dev)
+node.default['rails_app']['packages'] = %w(openssl libpq-dev libreadline6 libreadline6-dev libxml2-dev libxslt-dev libyaml-dev zlib1g zlib1g-dev imagemagick libmagickcore-dev)
 node['rails_app']['packages'].each do |pkg|
   package pkg do
     action :install
@@ -48,9 +51,13 @@ end
 
 ssh_known_hosts_entry 'github.com'
 
+group node['rails_app']['group'] do
+  gid node['rails_app']['gid']
+end
+
 user node['rails_app']['user'] do
-  uid 2000
-  gid node['rails_app']['group']
+  uid node['rails_app']['uid']
+  gid node['rails_app']['gid']
   home "/home/#{node['rails_app']['user']}"
   shell '/bin/bash'
 end

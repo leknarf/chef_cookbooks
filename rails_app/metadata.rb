@@ -1,5 +1,5 @@
 name "rails_app"
-version "1.0.0"
+version "1.0.2"
 
 depends 'fqdn'
 depends 'monit'
