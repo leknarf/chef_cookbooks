@@ -54,9 +54,11 @@ after_fork do |server, worker|
   defined?(Rails) and Rails.cache.respond_to?(:reconnect) and
     Rails.cache.reconnect
 
-  Sidekiq.configure_client do |config|
-    config.redis = { :size => 1 }
-  end
+  <% if node['rails_app']['install_sidekiq'] %>
+    Sidekiq.configure_client do |config|
+      config.redis = { :size => 1 }
+    end
+  <% end %>
 
   child_pid = server.config[:pid].sub('.pid', ".#{worker.nr}.pid")
   system("echo #{Process.pid} > #{child_pid}")
