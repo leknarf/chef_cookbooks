@@ -1,8 +1,9 @@
 name "rails_app"
-version "1.1.0"
+version "1.2.1"
 
 depends 'fqdn'
 depends 'monit'
 depends 'redis'
-depends 'ruby_build'
 depends 'ssh_known_hosts'
+depends 'ruby_build'
+depends 'rbenv'

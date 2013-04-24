@@ -1,9 +1,33 @@
-include_recipe 'ruby_build'
+
 include_recipe 'monit'
+include_recipe 'ruby_build'
+node.default['rails_app']['ruby_version'] = '2.0.0-p0'
+
+file "/etc/gemrc" do
+  content <<-EOS
+    install: --no-rdoc --no-ri
+    update:  --no-rdoc --no-ri
+  EOS
+  owner "root"
+  mode 0644
+end
+
+ruby_build_ruby node['rails_app']['ruby_version'] do
+  prefix_path "/usr/local/ruby/ruby-#{node['rails_app']['ruby_version']}"
+  action :install
+end
+
+gem_package 'bundler' do
+  gem_binary "/usr/local/ruby/ruby-#{node['rails_app']['ruby_version']}/bin/gem"
+end
+
+['ruby', 'gem', 'bundle'].each do |bin|
+  link "/usr/local/bin/#{bin}" do
+    to "/usr/local/ruby/ruby-#{node['rails_app']['ruby_version']}/bin/#{bin}"
+  end
+end
 
 node.default['rails_app']['install_redis'] = true
-node.default['rails_app']['install_sidekiq'] = true
-node.default['rails_app']['install_clock'] = true
 node.default['rails_app']['services'] = %w(unicorn sidekiq clock)
 
 if node['rails_app']['install_redis']
@@ -37,8 +61,7 @@ node.default['rails_app']['rails_env'] = 'production'
 node.default['rails_app']['unicorn_workers'] = 3
 node.default['rails_app']['nginx_workers'] = 3
 node.default['rails_app']['server_name'] = 'example.com'
-node.default['rails_app']['ruby_version'] = '2.0.0-p0'
-if node['rails_app']['install_sidekiq']
+if node['rails_app']['services'].include? 'sidekiq'
   node.default['rails_app']['sidekiq_workers'] = 25
   node.default['rails_app']['sidekiq_worker_priority'] = { :default => 1 }
 end
@@ -112,21 +135,6 @@ file "/etc/gemrc" do
   mode 0644
 end
 
-ruby_build_ruby node['rails_app']['ruby_version'] do
-  prefix_path "/usr/local/ruby/ruby-#{node['rails_app']['ruby_version']}"
-  action :install
-end
-
-gem_package 'bundler' do
-  gem_binary "/usr/local/ruby/ruby-#{node['rails_app']['ruby_version']}/bin/gem"
-end
-
-['ruby', 'gem', 'bundle'].each do |bin|
-  link "/usr/local/bin/#{bin}" do
-    to "/usr/local/ruby/ruby-#{node['rails_app']['ruby_version']}/bin/#{bin}"
-  end
-end
-
 directory "/etc/unicorn" do
   action :create
   owner node['rails_app']['user']
@@ -146,16 +154,18 @@ node['rails_app']['services'].each do |service_name|
     source "#{service_name}.monitrc.erb"
     mode '0755'
     owner node['rails_app']['user']
-    notifies :restart, "service[monit]"
+    notifies :restart, "service[monit]", :immediately
   end
 end
 
+# Deploy unicorn init.d script
 template "/etc/init.d/unicorn" do
   source "unicorn.erb"
   mode '0755'
   owner 'root'
 end
 
+# Deploy upstart scripts for all non-unicorn services
 node['rails_app']['services'].reject {|sn| sn == 'unicorn'}.each do |service_name|
   if node['rails_app']['services'].include? service_name
     template "/etc/init/#{service_name}.conf" do
@@ -202,7 +212,10 @@ deploy_revision node['rails_app']['deploy_dir'] do
 
   migrate true
   migration_command "bundle exec rake db:migrate"
-  environment "RAILS_ENV" => node['rails_app']['rails_env']
+  environment({
+    "RBENV_VERSION" => "",
+    "RAILS_ENV" => node['rails_app']['rails_env'],
+  })
 
   before_migrate do
     template "#{release_path}/config/database.yml" do
@@ -212,7 +225,7 @@ deploy_revision node['rails_app']['deploy_dir'] do
       mode '0755'
     end
 
-    if node['rails_app']['install_sidekiq']
+    if node['rails_app']['services'].include? 'sidekiq'
       execute "stop_sidekiq" do
         command "monit stop sidekiq"
         user 'root'
@@ -220,7 +233,7 @@ deploy_revision node['rails_app']['deploy_dir'] do
       end
     end
 
-    if node['rails_app']['install_clock']
+    if node['rails_app']['services'].include? 'clock'
       execute "stop_clock" do
         command "monit stop clock"
         user 'root'
@@ -232,15 +245,24 @@ deploy_revision node['rails_app']['deploy_dir'] do
       command "bundle install --path=vendor/bundle --deployment --without #{bundler_without_groups.join(' ')}"
       user node['rails_app']['user']
       cwd release_path
+      environment({
+        "RBENV_DIR" => release_path,
+        "RBENV_VERSION" => "",
+        "RAILS_ENV" => node['rails_app']['rails_env'],
+      })
     end
 
     if node['rails_app']['create_db']
       execute "create db" do
         command node['rails_app']['create_db_command']
-        environment "RAILS_ENV" => node['rails_app']['rails_env']
         user node['rails_app']['user']
         cwd release_path
         not_if node['rails_app']['db_exists_command']
+        environment({
+          "RBENV_DIR" => release_path,
+          "RBENV_VERSION" => "",
+          "RAILS_ENV" => node['rails_app']['rails_env'],
+        })
       end
     end
   end
@@ -248,16 +270,21 @@ deploy_revision node['rails_app']['deploy_dir'] do
   before_symlink do
     execute "precompile_assets" do
       command "bundle exec rake assets:precompile"
-      environment "RAILS_ENV" => node['rails_app']['rails_env']
       user node['rails_app']['user']
       cwd release_path
+      environment({
+        "RBENV_DIR" => release_path,
+        "RBENV_VERSION" => "",
+        "RAILS_ENV" => node['rails_app']['rails_env'],
+      })
     end
   end
 
   restart_command do
     command = '/etc/init.d/unicorn upgrade'
-    command += '; monit start sidekiq' if node['rails_app']['install_sidekiq']
-    command += '; monit start clock' if node['rails_app']['install_clock']
+    command += '; monit start sidekiq' if node['rails_app']['services'].include? 'sidekiq'
+    command += '; monit start clock' if node['rails_app']['services'].include? 'clock'
+    command += '; monit start xvfb' if node['rails_app']['services'].include? 'xvfb'
     bash "restart_app" do
       user 'root'
       code command

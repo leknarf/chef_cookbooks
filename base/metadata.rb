@@ -1,8 +1,9 @@
-version "1.1.3"
+version "1.3.0"
 
 depends 'apt'
 depends 'build-essential'
 depends 'chef-client'
+depends 'fail2ban'
 depends 'fqdn'
 depends 'git'
 depends 'newrelic'

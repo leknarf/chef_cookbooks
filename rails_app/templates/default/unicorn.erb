@@ -8,6 +8,8 @@ TIMEOUT=${TIMEOUT-60}
 APP_ROOT=<%= node.rails_app.deploy_dir -%>/current
 PID=/var/run/unicorn.pid
 ENVIRONMENT=<%= node.rails_app.rails_env %>
+env RBENV_VERSION=<%= node.rails_app.ruby_version %>
+export RBENV_VERSION
 CMD="cd $APP_ROOT; bundle exec unicorn -E $ENVIRONMENT -D -c <%= node.rails_app.unicorn_config %>"
 action="$1"
 set -u

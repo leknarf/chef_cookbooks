@@ -2,7 +2,7 @@ node.normal['authorization']['sudo']['groups'] = %w(wheel sudo)
 node.normal['authorization']['sudo']['passwordless'] = true
 node.normal['authorization']['sudo']['users'] = %w(vagrant) if Chef::Config[:solo]
 
-node.normal['base']['packages'] = %w(mailutils ntp)
+node.normal['base']['packages'] = %w(mailutils ntp unattended-upgrades fail2ban)
 node.normal['base']['timezone'] = 'America/New_York'
 
 unless Chef::Config[:solo]
@@ -14,6 +14,7 @@ end
 
 include_recipe 'apt'
 include_recipe 'build-essential'
+include_recipe 'fail2ban'
 include_recipe 'git'
 include_recipe 'newrelic'
 include_recipe 'openssl'
@@ -34,6 +35,11 @@ node['base']['packages'].each do |pkg|
   package pkg do
     action :install
   end
+end
+
+execute "apt-get-update-on-boot" do
+  command "apt-get -y update && apt-get -y dist-upgrade && touch /var/lib/chef/apt_get_lock"
+  not_if { File.exists?('/var/lib/chef/apt_get_lock') }
 end
 
 package 'whoopsie' do

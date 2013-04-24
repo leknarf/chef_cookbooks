@@ -10,6 +10,8 @@ setgid <%= node.rails_app.group %>
 
 env RAILS_ENV=<%= node.rails_app.rails_env %>
 export RAILS_ENV
+env RBENV_VERSION=<%= node.rails_app.ruby_version %>
+export RBENV_VERSION
 
 exec bundle exec clockwork lib/clock.rb
 

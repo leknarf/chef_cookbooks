@@ -1,0 +1,19 @@
+# Upstart xvfb script
+# Managed by chef
+
+start on runlevel[345]
+stop on runlevel[!345]
+
+setuid <%= node.rails_app.user %>
+setgid <%= node.rails_app.group %>
+
+exec Xvfb :99 -screen 0 1280x1024x24
+
+post-start script
+PID=`ps -eo pid,command | grep Xvfb | grep -v grep | awk '{print $1}'`
+  echo $PID > /var/run/xvfb.pid
+end script
+
+post-stop script
+  rm -f /var/run/xvfb.pid
+end script

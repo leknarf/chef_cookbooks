@@ -9,3 +9,6 @@
   template: template0
   encoding: <%= node.rails_app.database.has_key?('encoding') ? node.rails_app.database['encoding'] : 'utf8' %>
   pool: <%= node.rails_app.database['pool'] %>
+<% unless node.rails_app.database['sslca'].nil? %>
+  sslca: <%= node.rails_app.database['sslca'] %>
+<% end %>
