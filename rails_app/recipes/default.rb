@@ -27,8 +27,8 @@ end
   end
 end
 
-node.default['rails_app']['install_redis'] = true
-node.default['rails_app']['services'] = %w(unicorn sidekiq clock)
+node.default['rails_app']['install_redis'] = false
+node.default['rails_app']['services'] = %w()
 
 if node['rails_app']['install_redis']
   include_recipe 'redis::server_package'
@@ -61,6 +61,10 @@ node.default['rails_app']['rails_env'] = 'production'
 node.default['rails_app']['unicorn_workers'] = 3
 node.default['rails_app']['nginx_workers'] = 3
 node.default['rails_app']['server_name'] = 'example.com'
+node.default['rails_app']['monit_group'] = 'example'
+node.default['rails_app']['restart_command'] = "monit -g #{node['rails_app']['monit_group']} restart"
+node.default['rails_app']['migrate'] = false
+
 if node['rails_app']['services'].include? 'sidekiq'
   node.default['rails_app']['sidekiq_workers'] = 25
   node.default['rails_app']['sidekiq_worker_priority'] = { :default => 1 }
@@ -149,7 +153,7 @@ template node['rails_app']['unicorn_config'] do
 end
 
 # Deploy monit service config files
-node['rails_app']['services'].each do |service_name|
+node['rails_app']['services'].reject {|sn| sn == 'nginx'}.each do |service_name|
   template "/etc/monit/conf.d/#{service_name}.monitrc" do
     source "#{service_name}.monitrc.erb"
     mode '0755'
@@ -165,8 +169,8 @@ template "/etc/init.d/unicorn" do
   owner 'root'
 end
 
-# Deploy upstart scripts for all non-unicorn services
-node['rails_app']['services'].reject {|sn| sn == 'unicorn'}.each do |service_name|
+# Deploy upstart scripts for all non-unicorn or nginx services
+node['rails_app']['services'].reject {|sn| %w(unicorn nginx).include? sn }.each do |service_name|
   if node['rails_app']['services'].include? service_name
     template "/etc/init/#{service_name}.conf" do
       source "#{service_name}.conf.erb"
@@ -176,27 +180,39 @@ node['rails_app']['services'].reject {|sn| sn == 'unicorn'}.each do |service_nam
   end
 end
 
-package 'nginx' do
-  action 'install'
+if node['rails_app']['services'].include? 'nginx'
+  package 'nginx' do
+    action 'install'
+  end
+
+  service 'nginx' do
+    supports :start => true, :stop => true, :reload => true, :restart => true
+    action :start
+    start_command 'service nginx start'
+    stop_command 'service nginx stop'
+    status_command 'service nginx status'
+    reload_command 'service nginx reload'
+  end
+
+  template '/etc/nginx/nginx.conf' do
+    source 'nginx.conf.erb'
+    owner 'root'
+    group 'root'
+    mode '0755'
+    notifies :enable, "service[nginx]"
+    notifies :start, "service[nginx]"
+    notifies :reload, "service[nginx]"
+  end
 end
 
-service 'nginx' do
-  supports :start => true, :stop => true, :reload => true, :restart => true
-  action :start
-  start_command 'service nginx start'
-  stop_command 'service nginx stop'
-  status_command 'service nginx status'
-  reload_command 'service nginx reload'
-end
+node.default['rails_app']['symlinks'] = {
+  'bundle' => 'bundle',
+}
+node.default['rails_app']['create_dirs_before_symlink'] = %w(tmp log bundle)
 
-template '/etc/nginx/nginx.conf' do
-  source 'nginx.conf.erb'
-  owner 'root'
-  group 'root'
-  mode '0755'
-  notifies :enable, "service[nginx]"
-  notifies :start, "service[nginx]"
-  notifies :reload, "service[nginx]"
+execute "restart_rails_app" do
+  command node['rails_app']['restart_command']
+  action :nothing
 end
 
 deploy_revision node['rails_app']['deploy_dir'] do
@@ -206,11 +222,11 @@ deploy_revision node['rails_app']['deploy_dir'] do
   repository node['rails_app']['git_repo']
   revision node['rails_app']['git_branch']
   bundler_without_groups = node['rails_app']['bundler_without_groups']
-  create_dirs_before_symlink = %w(tmp log)
+  create_dirs_before_symlink node['rails_app']['create_dirs_before_symlink']
   symlink_before_migrate.clear
-  symlinks.clear
+  symlinks node['rails_app']['symlinks']
 
-  migrate true
+  migrate node['rails_app']['migrate']
   migration_command "bundle exec rake db:migrate"
   environment({
     "RBENV_VERSION" => "",
@@ -242,7 +258,7 @@ deploy_revision node['rails_app']['deploy_dir'] do
     end
 
     execute "bundle_install" do
-      command "bundle install --path=vendor/bundle --deployment --without #{bundler_without_groups.join(' ')}"
+      command "bundle install --path=#{node['rails_app']['deploy_dir']}/shared/bundle --deployment --without #{bundler_without_groups.join(' ')}"
       user node['rails_app']['user']
       cwd release_path
       environment({
@@ -268,26 +284,17 @@ deploy_revision node['rails_app']['deploy_dir'] do
   end
 
   before_symlink do
-    execute "precompile_assets" do
-      command "bundle exec rake assets:precompile"
-      user node['rails_app']['user']
-      cwd release_path
-      environment({
-        "RBENV_DIR" => release_path,
-        "RBENV_VERSION" => "",
-        "RAILS_ENV" => node['rails_app']['rails_env'],
-      })
-    end
-  end
-
-  restart_command do
-    command = '/etc/init.d/unicorn upgrade'
-    command += '; monit start sidekiq' if node['rails_app']['services'].include? 'sidekiq'
-    command += '; monit start clock' if node['rails_app']['services'].include? 'clock'
-    command += '; monit start xvfb' if node['rails_app']['services'].include? 'xvfb'
-    bash "restart_app" do
-      user 'root'
-      code command
+    if node['rails_app']['services'].include? 'unicorn'
+      execute "precompile_assets" do
+        command "bundle exec rake assets:precompile"
+        user node['rails_app']['user']
+        cwd release_path
+        environment({
+          "RBENV_DIR" => release_path,
+          "RBENV_VERSION" => "",
+          "RAILS_ENV" => node['rails_app']['rails_env'],
+        })
+      end
     end
   end
 
@@ -299,31 +306,46 @@ deploy_revision node['rails_app']['deploy_dir'] do
       group node['rails_app']['group']
       mode '0777'
     end
+
     {
       'nginx.access.log' => 'nginx',
       'nginx.error.log' => 'nginx',
       'unicorn.log' => 'unicorn',
-    }.each do |log_file, log_dir|
-      log_file_path = "#{release_path}/log/#{log_file}"
-      file log_file_path do
-        user node['rails_app']['user']
+    }.select {|_, service_name| node['rails_app']['services'].include? service_name}
+     .each do |log_file, log_dir|
+        log_file_path = "#{release_path}/log/#{log_file}"
+        file log_file_path do
+          user node['rails_app']['user']
+          group node['rails_app']['group']
+          action :create_if_missing
+          mode '0444'
+        end
+        link log_file_path do
+          to "/var/log/#{log_dir}/#{log_file}"
+        end
+    end
+    node['rails_app']['symlinks'].each do |target, _|
+      directory "#{node['rails_app']['deploy_dir']}/shared/#{target}" do
+        action :create
+        recursive true
+        owner node['rails_app']['user']
         group node['rails_app']['group']
-        action :create_if_missing
-        mode '0444'
-      end
-      link log_file_path do
-        to "/var/log/#{log_dir}/#{log_file}"
+        mode '0755'
       end
     end
 
-    bash "notify_admins" do
-      user node['rails_app']['user']
-      code <<-EOH
-        git log -n 5 | mail -s "#{node['rails_app']['rails_env']} deployment complete" #{node['rails_app']['notify_email']}
-      EOH
-      cwd release_path
+    # The clock is the only singleton, so we'll use it to trigger the notification email
+    if node['rails_app']['services'].include? 'clock'
+      bash "notify_admins" do
+        user node['rails_app']['user']
+        code <<-EOH
+          git log -n 5 | mail -s "#{node['rails_app']['rails_env']} deployment complete" #{node['rails_app']['notify_email']}
+        EOH
+        cwd release_path
+      end
     end
   end
 
-  notifies :restart, "service[nginx]"
+  notifies :restart, "service[nginx]" if node['rails_app']['services'].include? 'nginx'
+  notifies :run, "execute[restart_rails_app]", :delayed
 end

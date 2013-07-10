@@ -1,5 +1,6 @@
 check process clock
   with pidfile /var/run/clock.pid
+  group <%= node.rails_app.monit_group %>
   start program = "/sbin/start clock"
   stop program = "/sbin/stop clock"
   if not exist then alert

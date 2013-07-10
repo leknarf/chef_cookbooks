@@ -5,6 +5,8 @@ node.normal['authorization']['sudo']['users'] = %w(vagrant) if Chef::Config[:sol
 node.normal['base']['packages'] = %w(mailutils ntp unattended-upgrades fail2ban)
 node.normal['base']['timezone'] = 'America/New_York'
 
+node.normal['chef_client']['daemon_options'] = %w(--fork)
+
 unless Chef::Config[:solo]
   include_recipe 'chef-client::delete_validation'
   include_recipe 'chef-client::config'

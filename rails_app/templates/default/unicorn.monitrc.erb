@@ -1,7 +1,8 @@
 check process unicorn
   with pidfile /var/run/unicorn.pid
-  start program = "/etc/init.d/unicorn start"
-  stop program = "/etc/init.d/unicorn stop"
+  group <%= node.rails_app.monit_group %>
+  start program = "/etc/init.d/unicorn upgrade"
+  stop program = "/etc/init.d/unicorn upgrade"
 
 <% (0...node.rails_app.unicorn_workers).each do |worker_num| %>
 check process unicorn_worker_<%= worker_num %>

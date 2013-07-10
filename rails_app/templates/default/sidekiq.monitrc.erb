@@ -1,5 +1,6 @@
 check process sidekiq
   with pidfile /var/run/sidekiq.pid
+  group <%= node.rails_app.monit_group %>
   start program = "/sbin/start sidekiq"
   stop program = "/sbin/stop sidekiq"
   if not exist then alert
